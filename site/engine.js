@@ -279,6 +279,7 @@
       chain: r.chain, chain_name: chainName(r.chain), store: r.title, address: r.address,
       distance_km: r.dist !== null ? Math.round(r.dist * 10) / 10 : null,
       total: r2(r.eff), basket_here: r2(total(r)), branches: branches[r.chain] || 1,
+      stale: db.stores[r.si].stale || null,
       found: resolved.filter(([d]) => r.picks[d]).map(([d]) => d),
       missing: resolved.filter(([d]) => !r.picks[d] && cheapest[d]).map(([d]) => d),
       picks: resolved.map(([d, , k]) => pickJson(d, r.picks[d], k)),

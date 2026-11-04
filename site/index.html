@@ -302,6 +302,7 @@ function render(d){
       <span class="tag">${d.sort==="distance" ? "📍 הכי קרוב" : "🏆 הכי משתלם"}</span>
       <h2>${logo(best.chain, best.chain_name)}${esc(best.chain_name)} · ${esc(best.store)}</h2>
       <div class="addr">${esc(best.address||"")} · ${dist(best)}</div>
+      ${best.stale?`<div class="addr" style="opacity:1;margin-top:4px">⚠️ מחירים מ-${fmtWhen(best.stale)} – הרשת לא עודכנה היום</div>`:""}
       <div class="price">${money(best.total)} <small>לכל הסל</small></div>
       ${d.sort==="distance"
         ? (best.total > d.cheapest_total + 0.01 ? `<div class="save">יקר ב-${money(best.total-d.cheapest_total)} מהאפשרות הכי זולה</div>` : `<div class="save">✓ גם הכי קרוב וגם הכי זול</div>`)
@@ -316,7 +317,7 @@ function render(d){
     rest.forEach((r,i)=>{
       h += `<div class="card store" onclick="this.classList.toggle('open')">
         <div class="rank" style="background:${COLORS[r.chain]||"#607d8b"}">${i+2}</div>
-        <div><h3>${logo(r.chain, r.chain_name)}${esc(r.chain_name)}</h3><div class="meta">${esc(r.store)} · ${dist(r)}${r.branches>1?` · ${r.branches} סניפים בעיר`:""}</div></div>
+        <div><h3>${logo(r.chain, r.chain_name)}${esc(r.chain_name)}</h3><div class="meta">${esc(r.store)} · ${dist(r)}${r.branches>1?` · ${r.branches} סניפים בעיר`:""}${r.stale?` · <span style="color:var(--gold)">⚠️ מחירים מ-${fmtWhen(r.stale)}</span>`:""}</div></div>
         <div><div class="tot">${money(r.total)}</div>${d.sort==="distance"
           ? `<div class="delta" style="color:var(--brand)">${r.distance_km!=null?r.distance_km+' ק"מ':""}</div>`
           : `<div class="delta">+${money(r.total-best.total)}</div>`}</div>
