@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f5a43">
+<title>סל חכם</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3f1ea; --card:#ffffff; --ink:#1d2421; --muted:#6b736f; --line:#e6e2d8;
+  --brand:#0f5a43; --brand-2:#14785a; --brand-soft:#e3f1ea;
+  --gold:#e8a317; --gold-soft:#fdf3dc; --red:#c2412d; --red-soft:#fbe9e5;
+  --radius:18px; --shadow:0 1px 2px rgba(20,30,25,.06),0 6px 20px rgba(20,30,25,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#111614; --card:#1a211e; --ink:#eef2ef; --muted:#9aa5a0; --line:#2a332f;
+    --brand:#3fbf8f; --brand-2:#2fa57a; --brand-soft:#173328; --gold:#f2b53a; --gold-soft:#3a2f16;
+    --red:#ff8a75; --red-soft:#3a1f1a; --shadow:none; }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Heebo,"Segoe UI",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.app{max-width:520px;margin:0 auto;padding:0 16px 96px}
+header{background:linear-gradient(160deg,#0f5a43,#14785a);color:#fff;
+  margin:0 -16px;padding:18px 20px 22px;border-radius:0 0 26px 26px;box-shadow:0 8px 24px rgba(15,90,67,.25)}
+@media (prefers-color-scheme: dark){ header{background:linear-gradient(160deg,#0d3b2d,#145a44)} }
+.brand{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand h1{margin:0;font-size:24px;font-weight:800;letter-spacing:-.3px}
+.brand small{display:block;font-weight:400;font-size:13px;opacity:.85;margin-top:2px}
+.pill{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:6px 12px;
+  font-size:12px;white-space:nowrap;cursor:pointer;color:#fff}
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-top:14px;border:1px solid var(--line)}
+.label{font-size:13px;color:var(--muted);font-weight:500;margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.row{display:flex;gap:8px}
+input[type=text]{flex:1;min-width:0;font:inherit;font-size:16px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);
+  background:var(--bg);color:var(--ink);outline:none}
+input[type=text]:focus{border-color:var(--brand)}
+button{font:inherit;cursor:pointer;border:0}
+.btn-icon{width:48px;flex:none;border-radius:12px;background:var(--brand-soft);color:var(--brand);font-size:20px;font-weight:700}
+.btn-main{width:100%;margin-top:14px;padding:15px;border-radius:14px;background:var(--brand);color:#fff;font-size:17px;font-weight:700;
+  box-shadow:0 6px 16px rgba(15,90,67,.28)}
+.btn-main:disabled{opacity:.55}
+.btn-ghost{background:none;color:var(--muted);font-size:13px;padding:6px 4px;text-decoration:underline}
+.hint{font-size:12px;color:var(--muted);margin-top:8px}
+.ok{color:var(--brand)} .err{color:var(--red)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;min-height:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--brand-soft);color:var(--brand);border-radius:999px;
+  padding:7px 12px;font-size:14px;font-weight:500}
+.chip button{background:none;color:inherit;font-size:16px;line-height:1;padding:0 0 0 2px;opacity:.7}
+.chip.miss{background:var(--red-soft);color:var(--red)}
+.chip.sm{padding:4px 10px;font-size:13px}
+.suggest{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:4px;scrollbar-width:none}
+.suggest button{flex:none;background:var(--bg);border:1px dashed var(--line);color:var(--muted);border-radius:999px;padding:5px 11px;font-size:13px}
+.seg{display:flex;background:var(--bg);border-radius:12px;padding:4px;gap:4px}
+.seg button{flex:1;padding:10px 6px;border-radius:9px;background:none;color:var(--muted);font-weight:500;font-size:14px}
+.seg button.on{background:var(--card);color:var(--brand);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.kms{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.kms button{padding:7px 12px;border-radius:999px;background:var(--bg);color:var(--muted);border:1.5px solid var(--line);font-size:13px}
+.kms button.on{border-color:var(--brand);color:var(--brand);background:var(--brand-soft);font-weight:700}
+.logo{width:22px;height:22px;border-radius:6px;display:inline-grid;place-items:center;flex:none;overflow:hidden;
+  color:#fff;font-size:12px;font-weight:800;vertical-align:-5px;margin-inline-end:6px;background:#607d8b;position:relative}
+.logo img{width:100%;height:100%;object-fit:contain;background:#fff;position:absolute;inset:0}
+.hero .logo{width:26px;height:26px;vertical-align:-5px;box-shadow:0 0 0 2px rgba(255,255,255,.5)}
+.dist-big{font-weight:800;color:var(--brand)}
+.section-title{font-size:18px;font-weight:800;margin:26px 4px 2px}
+.section-sub{font-size:13px;color:var(--muted);margin:0 4px}
+.hero{background:linear-gradient(150deg,var(--brand),var(--brand-2));color:#fff;border:0;position:relative;overflow:hidden}
+.hero .tag{display:inline-block;background:var(--gold);color:#3b2a00;font-weight:800;font-size:12px;border-radius:999px;padding:4px 10px}
+.hero h2{margin:10px 0 2px;font-size:22px}
+.hero .addr{opacity:.85;font-size:13px}
+.hero .price{font-size:40px;font-weight:800;letter-spacing:-1px;margin-top:10px}
+.hero .price small{font-size:15px;font-weight:500;opacity:.85;letter-spacing:0}
+.hero .save{background:rgba(255,255,255,.15);border-radius:12px;padding:8px 12px;margin-top:10px;font-size:14px}
+.hero .chips .chip{background:rgba(255,255,255,.18);color:#fff}
+.hero .chips .chip.miss{background:rgba(255,120,100,.3)}
+.store{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;cursor:pointer}
+.rank{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:800;color:#fff;font-size:15px}
+.store h3{margin:0;font-size:16px}
+.store .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.store .tot{text-align:left;font-weight:800;font-size:19px;white-space:nowrap}
+.store .delta{font-size:12px;color:var(--red);font-weight:500;text-align:left}
+.have{font-size:13px;margin-top:8px;line-height:1.55;grid-column:2 / 4}
+.have b{font-weight:500}
+.have .m{color:var(--red)}
+.details{display:none;grid-column:1 / 4;margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+.store.open .details{display:block}
+.line{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.line:last-child{border-bottom:0}
+.line .n{font-weight:500}
+.line .p{font-size:12px;color:var(--muted);margin-top:2px}
+.line .c{font-weight:700;white-space:nowrap}
+.line.no .c{color:var(--red);font-weight:500}
+.hero .details{display:block;border-top-color:rgba(255,255,255,.2)}
+.hero .line{border-bottom-color:rgba(255,255,255,.18)}
+.hero .line .p{color:rgba(255,255,255,.75)}
+.toggle{background:rgba(255,255,255,.16);color:#fff;border-radius:10px;padding:8px 12px;margin-top:12px;font-size:14px;width:100%}
+.split-store{margin-top:12px}
+.split-store h4{margin:0 0 4px;font-size:14px;display:flex;justify-content:space-between}
+.empty{text-align:center;color:var(--muted);padding:26px 10px}
+.spinner{width:28px;height:28px;border:3px solid var(--brand-soft);border-top-color:var(--brand);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-end;z-index:20}
+.sheet.show{display:flex}
+.sheet .panel{background:var(--card);width:100%;max-width:520px;margin:0 auto;border-radius:22px 22px 0 0;padding:20px 18px 28px;max-height:80vh;overflow:auto}
+.log{background:var(--bg);border-radius:12px;padding:10px;font-size:12px;max-height:200px;overflow:auto;white-space:pre-wrap;margin-top:10px;direction:rtl}
+.note{font-size:12px;color:var(--muted);margin:18px 6px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div><h1>🛒 סל חכם</h1><small>איפה הכי זול לקנות את הסל שלך</small></div>
+      <button class="pill" id="dataPill" onclick="openSheet()">טוען…</button>
+    </div>
+  </header>
+
+  <div class="card">
+    <p class="label">📍 המיקום שלי</p>
+    <div class="row">
+      <input type="text" id="addr" placeholder="רחוב ומספר, עיר" autocomplete="street-address">
+      <button class="btn-icon" title="המיקום הנוכחי" onclick="useGPS()">◎</button>
+      <button class="btn-icon" title="שמור" onclick="saveAddr()">✓</button>
+    </div>
+    <div class="hint" id="addrMsg"></div>
+  </div>
+
+  <div class="card">
+    <p class="label">📝 מה צריך לקנות?</p>
+    <div class="row">
+      <input type="text" id="itemIn" placeholder="למשל: חלב, ביצים, חסה" enterkeyhint="done">
+      <button class="btn-icon" onclick="addFromInput()">+</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="suggest" id="suggest"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+      <span class="hint" id="count"></span>
+      <button class="btn-ghost" onclick="clearList()">נקה רשימה</button>
+    </div>
+    <button class="btn-main" id="go" onclick="compare()">השווה מחירים</button>
+  </div>
+
+  <div class="card">
+    <p class="label">⚙️ איך לסדר את התוצאות?</p>
+    <div class="seg" id="sortSeg">
+      <button data-v="price" onclick="setSort('price')">💰 הכי זול</button>
+      <button data-v="distance" onclick="setSort('distance')">📍 הכי קרוב</button>
+    </div>
+    <p class="label" style="margin-top:14px">מרחק מקסימלי מהבית</p>
+    <div class="kms" id="kmSeg">
+      <button data-v="" onclick="setKm('')">כל העיר</button>
+      <button data-v="1" onclick="setKm('1')">עד 1 ק"מ</button>
+      <button data-v="2" onclick="setKm('2')">עד 2 ק"מ</button>
+      <button data-v="3" onclick="setKm('3')">עד 3 ק"מ</button>
+      <button data-v="5" onclick="setKm('5')">עד 5 ק"מ</button>
+    </div>
+    <div class="hint" id="kmHint"></div>
+  </div>
+
+  <div id="results"></div>
+
+  <p class="note">המחירים מגיעים מקבצי המחירים שהרשתות מחויבות לפרסם לפי חוק. מחירי מדף בלבד, בלי מבצעים ומועדון.
+  כשמוצר נמכר בגדלים שונים, המחיר מחושב לכמות השוואה אחידה (חלב = 1 ליטר, ביצים = 12 וכו'), והבוט בוחר את האפשרות הזולה בלי קשר למותג.</p>
+</div>
+
+<div class="sheet" id="sheet" onclick="if(event.target===this)closeSheet()">
+  <div class="panel">
+    <h3 style="margin:0 0 6px">נתוני מחירים</h3>
+    <div id="sheetInfo" class="hint"></div>
+    <div class="hint" style="margin-top:10px">המחירים מתעדכנים אוטומטית כל בוקר מקבצי המחירים הרשמיים של הרשתות. אין צורך לעשות כלום.</div>
+    <button class="btn-ghost" style="margin-top:10px" onclick="closeSheet()">סגור</button>
+  </div>
+</div>
+
+<script src="engine.js"></script>
+<script>
+const COLORS = {"RAMI_LEVY":"#1f5fbf","SHUFERSAL":"#d0021b","VICTORY_NEW_SOURCE":"#e4572e","YOHANANOF":"#2a8a3e",
+  "OSHER_AD":"#f0a500","MAHSANI_ASHUK_NEW_SOURCE":"#7b3fa0","YAYNO_BITAN_AND_CARREFOUR":"#1565c0","TIV_TAAM":"#b71c1c",
+  "SUPER_PHARM":"#00558c","GOOD_PHARM":"#00a19a","KESHET":"#8d6e63","KING_STORE":"#455a64","MAAYAN_2000":"#00897b",
+  "FRESH_MARKET_AND_SUPER_DOSH":"#43a047","HAZI_HINAM":"#ef6c00"};
+// אתרי הרשתות – הלוגו הקטן נלקח מהסמל (favicon) של האתר הרשמי. רשת בלי אתר ידוע / סמל שלא נטען = עיגול עם האות הראשונה.
+const SITES = {"RAMI_LEVY":"rami-levy.co.il","SHUFERSAL":"shufersal.co.il","VICTORY_NEW_SOURCE":"victoryonline.co.il",
+  "YOHANANOF":"yochananof.co.il","OSHER_AD":"osherad.co.il","YAYNO_BITAN_AND_CARREFOUR":"carrefour.co.il",
+  "TIV_TAAM":"tivtaam.co.il","SUPER_PHARM":"super-pharm.co.il","GOOD_PHARM":"good-pharm.co.il"};
+function logo(chain, name){
+  const letter = esc((name||"?").trim().charAt(0));
+  const site = SITES[chain];
+  const img = site ? `<img alt="" loading="lazy" src="https://www.google.com/s2/favicons?sz=64&domain=${site}"
+    onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()">` : "";
+  return `<span class="logo" style="background:${COLORS[chain]||"#607d8b"}">${letter}${img}</span>`;
+}
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money = v => "₪" + Number(v).toLocaleString("he-IL",{minimumFractionDigits:2,maximumFractionDigits:2});
+const store = {get(k,d){try{return JSON.parse(localStorage.getItem(k)) ?? d}catch(e){return d}},
+               set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let items = store.get("items", []);
+let known = [];
+let sortBy = store.get("sort", "price");
+let maxKm = store.get("maxKm", "");
+let lastResult = null;
+function paintFilters(){
+  document.querySelectorAll("#sortSeg button").forEach(b=>b.classList.toggle("on", b.dataset.v===sortBy));
+  document.querySelectorAll("#kmSeg button").forEach(b=>b.classList.toggle("on", b.dataset.v===String(maxKm)));
+}
+function setSort(v){ sortBy=v; store.set("sort",v); paintFilters(); if(lastResult) compare(); }
+function setKm(v){ maxKm=v; store.set("maxKm",v); paintFilters(); if(lastResult) compare(); }
+let gps = store.get("gps", null);
+
+let DB = null;
+let dbPromise = null;
+function loadDB(){
+  if(!dbPromise) dbPromise = fetch("data/prices.json", {cache:"no-cache"})
+    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(raw=>{ DB = Basket.prepare(raw); return DB; });
+  return dbPromise;
+}
+
+// איתור כתובת בדפדפן – OpenStreetMap (Nominatim), ואם לא נמצא – Photon. רק תוצאות באזור באר שבע.
+const BBOX = [31.17, 31.33, 34.70, 34.90];
+const inBox = (la,lo) => la>=BBOX[0] && la<=BBOX[1] && lo>=BBOX[2] && lo<=BBOX[3];
+async function geocode(q){
+  const qs = /באר[\s-]?שבע|ב"ש/.test(q) ? [q] : [q + ", באר שבע", q];
+  for(const query of qs){
+    try{
+      const u = "https://nominatim.openstreetmap.org/search?format=json&limit=3&countrycodes=il&accept-language=he&q="+encodeURIComponent(query);
+      const r = await (await fetch(u)).json();
+      const hit = r.find(x=>inBox(+x.lat,+x.lon)); if(hit) return {lat:+hit.lat, lon:+hit.lon};
+    }catch(e){}
+    try{
+      const u = "https://photon.komoot.io/api/?limit=3&lat=31.25&lon=34.79&q="+encodeURIComponent(query);
+      const r = await (await fetch(u)).json();
+      const f = (r.features||[]).find(f=>inBox(f.geometry.coordinates[1], f.geometry.coordinates[0]));
+      if(f) return {lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0]};
+    }catch(e){}
+  }
+  return null;
+}
+
+function renderChips(){
+  $("#chips").innerHTML = items.map((t,i)=>`<span class="chip">${esc(t)}<button aria-label="הסר" onclick="removeItem(${i})">×</button></span>`).join("");
+  $("#count").textContent = items.length ? `${items.length} מוצרים ברשימה` : "הרשימה ריקה";
+  const lower = new Set(items);
+  $("#suggest").innerHTML = known.filter(k=>!lower.has(k)).map(k=>`<button onclick="addItems('${esc(k)}')">+ ${esc(k)}</button>`).join("");
+  store.set("items", items);
+}
+function addItems(text){
+  text.split(/[,،\n;]+/).map(s=>s.trim()).filter(Boolean).forEach(t=>{ if(!items.includes(t)) items.push(t); });
+  renderChips();
+}
+function addFromInput(){ const el=$("#itemIn"); if(el.value.trim()){ addItems(el.value); el.value=""; } el.focus(); }
+function removeItem(i){ items.splice(i,1); renderChips(); }
+function clearList(){ items=[]; renderChips(); $("#results").innerHTML=""; }
+$("#itemIn").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); addFromInput(); }});
+$("#itemIn").addEventListener("paste", e=>{ setTimeout(()=>{ const v=$("#itemIn").value; if(/[,\n]/.test(v)){ addItems(v); $("#itemIn").value=""; } },0); });
+
+async function saveAddr(){
+  const a = $("#addr").value.trim(); if(!a) return;
+  $("#addrMsg").className="hint"; $("#addrMsg").textContent="מאתר כתובת…";
+  const r = await geocode(a);
+  if(r){ gps = r; store.set("gps", gps); store.set("addr", a); }
+  $("#addrMsg").className = "hint " + (r?"ok":"err");
+  $("#addrMsg").textContent = r ? "✓ המיקום נשמר" : `לא מצאתי את "${a}" בבאר שבע. נסה: רחוב ומספר`;
+  if(r && lastResult) compare();
+}
+function useGPS(){
+  if(!navigator.geolocation){ $("#addrMsg").textContent="הדפדפן לא תומך במיקום"; return; }
+  $("#addrMsg").className="hint"; $("#addrMsg").textContent="מאתר מיקום…";
+  navigator.geolocation.getCurrentPosition(p=>{
+    gps = {lat:p.coords.latitude, lon:p.coords.longitude};
+    store.set("gps", gps); store.set("addr", "המיקום הנוכחי");
+    $("#addr").value = "המיקום הנוכחי"; $("#addrMsg").className="hint ok"; $("#addrMsg").textContent="✓ משתמש במיקום הנוכחי";
+    if(lastResult) compare();
+  }, ()=>{ $("#addrMsg").className="hint err";
+    $("#addrMsg").textContent="אין גישה למיקום. אפשר להקליד כתובת ולשמור."; }, {enableHighAccuracy:true, timeout:15000});
+}
+
+function storeLines(picks){
+  return picks.map(p => p.found
+    ? `<div class="line"><div><div class="n">${esc(p.item)}</div><div class="p">${esc(p.product)}${p.size?` · ${esc(p.size)}`:""}${p.per?` · מחיר מדף ${money(p.shelf_price)}, מחושב ל-${esc(p.per)}`:""}</div></div><div class="c">${money(p.cost)}</div></div>`
+    : `<div class="line no"><div class="n">${esc(p.item)}</div><div class="c">אין בסניף</div></div>`).join("");
+}
+function haveText(r){
+  if(!r.missing.length) return `<b>✓ יש את כל הרשימה</b> (${r.found.length} מוצרים)`;
+  const miss = r.missing.length ? ` <span class="m">(חסר: ${r.missing.map(esc).join(", ")})</span>` : "";
+  return `<b>יש:</b> ${r.found.map(esc).join(", ") || "—"}${miss}`;
+}
+const dist = r => r.distance_km!=null ? `${r.distance_km} ק"מ` : "מרחק לא ידוע";
+
+function render(d){
+  if(d.error){ $("#results").innerHTML = `<div class="card empty err">${esc(d.error)}</div>`; return; }
+  const [best, ...rest] = d.ranking;
+  const second = rest[0];
+  let h = `<div class="section-title">התוצאה</div>
+    <p class="section-sub">${d.items.length} מוצרים · נבדקו ${d.stores_checked} סניפים · ${d.ranking.length} רשתות${d.max_km?` · עד ${d.max_km} ק"מ`:""}</p>`;
+  if(d.unknown_distance_excluded)
+    h += `<div class="hint" style="margin:6px 4px">${d.unknown_distance_excluded} סניפים לא נכללו כי המיקום שלהם עדיין לא ידוע</div>`;
+  if(d.not_found_anywhere.length)
+    h += `<div class="card" style="background:var(--gold-soft);border-color:transparent;font-size:14px">⚠️ לא נמצא באף סופר בבאר שבע: <b>${d.not_found_anywhere.map(esc).join(", ")}</b></div>`;
+  h += `<div class="card hero">
+      <span class="tag">${d.sort==="distance" ? "📍 הכי קרוב" : "🏆 הכי משתלם"}</span>
+      <h2>${logo(best.chain, best.chain_name)}${esc(best.chain_name)} · ${esc(best.store)}</h2>
+      <div class="addr">${esc(best.address||"")} · ${dist(best)}</div>
+      <div class="price">${money(best.total)} <small>לכל הסל</small></div>
+      ${d.sort==="distance"
+        ? (best.total > d.cheapest_total + 0.01 ? `<div class="save">יקר ב-${money(best.total-d.cheapest_total)} מהאפשרות הכי זולה</div>` : `<div class="save">✓ גם הכי קרוב וגם הכי זול</div>`)
+        : (second?`<div class="save">זול ב-${money(second.total-best.total)} מ${esc(second.chain_name)}</div>`:"")}
+      <div class="chips">${best.found.map(t=>`<span class="chip sm">✓ ${esc(t)}</span>`).join("")}${best.missing.map(t=>`<span class="chip sm miss">✕ ${esc(t)}</span>`).join("")}</div>
+      ${best.missing.length?`<div class="hint" style="color:#fff;opacity:.85">המחיר כולל את החסרים לפי המחיר הזול ביותר בסניף אחר</div>`:""}
+      <button class="toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">מה בדיוק קונים כאן ▾</button>
+      <div class="details" style="display:none">${storeLines(best.picks)}</div>
+    </div>`;
+  if(rest.length){
+    h += `<div class="section-title">רשתות נוספות</div><p class="section-sub">${d.sort==="distance" ? "הסניף הקרוב ביותר מכל רשת, מהקרוב לרחוק" : "הסניף הכי משתלם מכל רשת, מהזול ליקר"} · לחץ לפירוט</p>`;
+    rest.forEach((r,i)=>{
+      h += `<div class="card store" onclick="this.classList.toggle('open')">
+        <div class="rank" style="background:${COLORS[r.chain]||"#607d8b"}">${i+2}</div>
+        <div><h3>${logo(r.chain, r.chain_name)}${esc(r.chain_name)}</h3><div class="meta">${esc(r.store)} · ${dist(r)}${r.branches>1?` · ${r.branches} סניפים בעיר`:""}</div></div>
+        <div><div class="tot">${money(r.total)}</div>${d.sort==="distance"
+          ? `<div class="delta" style="color:var(--brand)">${r.distance_km!=null?r.distance_km+' ק"מ':""}</div>`
+          : `<div class="delta">+${money(r.total-best.total)}</div>`}</div>
+        <div class="have">${haveText(r)}</div>
+        <div class="details">${storeLines(r.picks)}</div>
+      </div>`;
+    });
+  }
+  // סל מפוצל, מקובץ לפי סניף
+  const groups = {};
+  const gChain = {};
+  d.split.items.filter(p=>p.found).forEach(p=>{ const k=p.chain_name+" · "+p.store; gChain[k]=p.chain; (groups[k]=groups[k]||[]).push(p); });
+  const nStores = Object.keys(groups).length;
+  h += `<div class="section-title">אם מוכנים לפצל</div>
+    <p class="section-sub">כל מוצר במקום הזול ביותר · ${nStores} עצירות</p>
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span style="font-size:28px;font-weight:800">${money(d.split.total)}</span>
+      <span class="chip" style="background:var(--gold-soft);color:#8a5a00">חיסכון ${money(d.split.saving)}</span></div>
+      ${Object.entries(groups).map(([k,ps])=>`<div class="split-store"><h4><span>${logo(gChain[k], k)}${esc(k)}</span><span>${money(ps.reduce((a,p)=>a+p.cost,0))}</span></h4>${storeLines(ps)}</div>`).join("")}
+    </div>`;
+  $("#results").innerHTML = h;
+  $("#results").scrollIntoView({behavior:"smooth"});
+}
+
+async function compare(){
+  if(!items.length){ $("#itemIn").focus(); return; }
+  $("#go").disabled = true;
+  $("#results").innerHTML = `<div class="card empty"><div class="spinner"></div>${DB ? "משווה מחירים בכל הסניפים…" : "טוען את מחירי הסופרים (בפעם הראשונה זה לוקח כמה שניות)…"}</div>`;
+  try{
+    const db = await loadDB();
+    await new Promise(r=>setTimeout(r,30));
+    lastResult = Basket.compare(db, items, {sort:sortBy, max_km:maxKm||null, ...(gps||{})});
+    render(lastResult);
+  }catch(e){ console.error(e); render({error:"לא הצלחתי לטעון את נתוני המחירים. בדוק את החיבור לאינטרנט ונסה שוב."}); dbPromise=null; }
+  $("#go").disabled = false;
+}
+
+function fmtWhen(s){ return s ? new Date(s).toLocaleString("he-IL",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"}) : "—"; }
+async function refreshStatus(){
+  $("#dataPill").textContent = "טוען מחירים…";
+  const db = await loadDB();
+  known = Object.keys(db.items); renderChips();
+  const chains = new Set(db.stores.map(s=>s.chain)).size, located = db.stores.filter(s=>s.lat).length;
+  $("#dataPill").textContent = `מחירים: ${fmtWhen(db.last_update)}`;
+  $("#sheetInfo").innerHTML = `עודכן לאחרונה: <b>${fmtWhen(db.last_update)}</b> · ${db.stores.length} סניפים מ-${chains} רשתות · ל-${located} מהם יש מיקום על המפה`;
+}
+function openSheet(){ $("#sheet").classList.add("show"); }
+function closeSheet(){ $("#sheet").classList.remove("show"); }
+
+$("#addr").value = store.get("addr", "") || "";
+if(!gps) $("#addrMsg").textContent = "הכנס כתובת בבאר שבע ולחץ ✓ (או ◎ למיקום הנוכחי) כדי לחשב מרחקים ממך";
+renderChips(); paintFilters();
+refreshStatus().catch(()=>{ $("#dataPill").textContent="אין חיבור"; });
+</script>
+</body>
+</html>

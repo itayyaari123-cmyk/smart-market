@@ -1,0 +1,6 @@
+app/data/
+__pycache__/
+*.pyc
+site/data/
+*_cookies.txt
+logging.log

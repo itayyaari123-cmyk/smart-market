@@ -1,0 +1,5 @@
+il-supermarket-scraper>=1.0.8
+lxml<6
+geopy
+requests
+tzdata

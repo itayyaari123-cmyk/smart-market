@@ -1,0 +1,52 @@
+{
+  "home_address": "מרכז באר שבע",
+  "home_lat": 31.2518,
+  "home_lon": 34.7913,
+  "fallback_lat": 31.2518,
+  "fallback_lon": 34.7913,
+  "city_names": [
+    "באר שבע",
+    "באר-שבע",
+    "ב\"ש",
+    "בארשבע",
+    "beer sheva",
+    "beersheba",
+    "be'er sheva",
+    "beer-sheva"
+  ],
+  "city_codes": [
+    "9000"
+  ],
+  "radius_km": 8,
+  "top_stores": 5,
+  "chains": [
+    "SHUFERSAL",
+    "RAMI_LEVY",
+    "VICTORY_NEW_SOURCE",
+    "YOHANANOF",
+    "OSHER_AD",
+    "HAZI_HINAM",
+    "MAHSANI_ASHUK_NEW_SOURCE",
+    "YAYNO_BITAN_AND_CARREFOUR",
+    "TIV_TAAM",
+    "SUPER_PHARM",
+    "GOOD_PHARM",
+    "ZOL_VEBEGADOL",
+    "SUPER_YUDA",
+    "STOP_MARKET",
+    "KESHET",
+    "CITY_MARKET_SHOPS",
+    "FRESH_MARKET_AND_SUPER_DOSH",
+    "NETIV_HASED",
+    "SHUK_AHIR",
+    "KING_STORE",
+    "MAAYAN_2000"
+  ],
+  "telegram_token": "",
+  "allowed_telegram_user_ids": [],
+  "daily_update_hour": 7,
+  "exclude_store_words": [
+    "וולט",
+    "wolt"
+  ]
+}
