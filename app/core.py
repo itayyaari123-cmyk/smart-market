@@ -159,6 +159,10 @@ def db() -> sqlite3.Connection:
     DATA.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(DB_PATH)
     con.executescript(SCHEMA)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(stores)")}
+    if "city_id" not in cols:
+        con.execute("ALTER TABLE stores ADD COLUMN city_id TEXT")
+        con.commit()
     return con
 
 
@@ -240,17 +244,47 @@ CHAIN_HE = {
 }
 
 
-def is_in_city(store: dict, cfg: dict) -> bool:
-    city = norm(store.get("city"))
+def cities(cfg: dict) -> list[dict]:
+    """רשימת הערים שבהן אוספים מחירים. תואם גם להגדרות הישנות (עיר אחת)."""
+    if cfg.get("cities"):
+        return cfg["cities"]
+    return [{"id": "beer-sheva", "name": "באר שבע", "names": cfg.get("city_names", []),
+             "codes": cfg.get("city_codes", []), "bbox": [31.17, 31.33, 34.70, 34.90], "center": [31.2518, 34.7913]}]
+
+
+def city_by_id(cfg: dict, cid: str | None) -> dict:
+    cs = cities(cfg)
+    return next((c for c in cs if c["id"] == cid), None) or next(
+        (c for c in cs if c["id"] == cfg.get("default_city")), cs[0])
+
+
+def city_of(store: dict, cfg: dict) -> str | None:
+    """לאיזו עיר שייך הסניף (id), או None. סדר העדיפויות: קוד יישוב → שם העיר בשדה העיר → כתובת/שם הסניף.
+    כתובת נבדקת רק כשאין עיר בשדה, כי "רחוב נס ציונה" קיים בהרבה ערים."""
     name = norm(store.get("name"))
     if any(norm(x) in name for x in cfg.get("exclude_store_words", [])):
-        return False
-    if city in {norm(c) for c in cfg["city_codes"]}:
-        return True
-    if city.isdigit() and city != "0":  # קוד יישוב של עיר אחרת (עומר, להבים...)
-        return False
-    hay = city + " " + norm(store.get("address")) + " " + norm(store.get("name"))
-    return any(norm(c) in hay for c in cfg["city_names"])
+        return None
+    city = norm(store.get("city"))
+    cs = cities(cfg)
+    for c in cs:
+        if city and city in {norm(x) for x in c.get("codes", [])}:
+            return c["id"]
+    if city.isdigit() and city != "0":
+        return None  # קוד יישוב של עיר אחרת
+    if city and city not in ("0", "unknown", "לא ידוע"):
+        for c in cs:
+            if any(norm(n) and (norm(n) == city or norm(n) in city) for n in c.get("names", [])):
+                return c["id"]
+        return None  # יש עיר בשדה – והיא לא אחת משלנו
+    hay = norm(store.get("address")) + " " + name
+    for c in cs:
+        if any(norm(n) and norm(n) in hay for n in c.get("names", [])):
+            return c["id"]
+    return None
+
+
+def is_in_city(store: dict, cfg: dict) -> bool:
+    return city_of(store, cfg) is not None
 
 
 # ───────────────────────────── הורדה ─────────────────────────────
@@ -367,9 +401,13 @@ def update_chain(chain_key: str, cfg: dict, con: sqlite3.Connection, report=prin
     if not stores:
         report(f"  {chain_key}: לא הצלחתי להוריד את קובץ הסניפים (האתר של הרשת לא זמין או השתנה)")
         return 0
-    local = {s["store_id"]: s for s in stores if is_in_city(s, cfg)}
+    local = {}
+    for s_ in stores:
+        cid = city_of(s_, cfg)
+        if cid:
+            local[s_["store_id"]] = {**s_, "city_id": cid}
     if not local:
-        report(f"  {chain_key}: אין סניפים בעיר (נבדקו {len(stores)} סניפים)")
+        report(f"  {chain_key}: אין סניפים בערים שלנו (נבדקו {len(stores)} סניפים)")
         return 0
     now = dt.datetime.now().isoformat(timespec="minutes")
     done = 0
@@ -385,16 +423,17 @@ def update_chain(chain_key: str, cfg: dict, con: sqlite3.Connection, report=prin
             continue
         save_store_prices(con, chain_key, st, rows, now)
         done += 1
-        report(f"  {chain_key} סניף {sid} ({st['name']}): {len(rows):,} מוצרים")
+        report(f"  {chain_key} סניף {sid} ({st['name']}, {st['city_id']}): {len(rows):,} מוצרים")
     return done
 
 
 def save_store_prices(con, chain_key, st, rows, now):
     con.execute(
-        "INSERT INTO stores(chain,store_id,chain_name,name,address,city,updated) VALUES(?,?,?,?,?,?,?) "
+        "INSERT INTO stores(chain,store_id,chain_name,name,address,city,updated,city_id) VALUES(?,?,?,?,?,?,?,?) "
         "ON CONFLICT(chain,store_id) DO UPDATE SET chain_name=excluded.chain_name,name=excluded.name,"
-        "address=excluded.address,city=excluded.city,updated=excluded.updated",
-        (chain_key, st["store_id"], st.get("chain_name", ""), st["name"], st["address"], st["city"], now),
+        "address=excluded.address,city=excluded.city,updated=excluded.updated,city_id=excluded.city_id",
+        (chain_key, st["store_id"], st.get("chain_name", ""), st["name"], st["address"], st["city"], now,
+         st.get("city_id")),
     )
     con.execute("DELETE FROM items WHERE chain=? AND store_id=?", (chain_key, st["store_id"]))
     con.executemany(
@@ -431,8 +470,9 @@ def update_all(report=print) -> None:
 BBOX = (31.17, 31.33, 34.70, 34.90)
 
 
-def _in_bbox(lat, lon):
-    return BBOX[0] <= lat <= BBOX[1] and BBOX[2] <= lon <= BBOX[3]
+def _in_bbox(lat, lon, box=None):
+    b = box or BBOX
+    return b[0] <= lat <= b[1] and b[2] <= lon <= b[3]
 
 
 def _nominatim(q):
@@ -443,13 +483,15 @@ def _nominatim(q):
     return (loc.latitude, loc.longitude) if loc else None
 
 
-def _photon(q):
+def _photon(q, box=None):
     import requests
-    r = requests.get("https://photon.komoot.io/api/", params={"q": q, "lat": 31.25, "lon": 34.79, "limit": 3},
+    b = box or BBOX
+    r = requests.get("https://photon.komoot.io/api/",
+                     params={"q": q, "lat": (b[0] + b[1]) / 2, "lon": (b[2] + b[3]) / 2, "limit": 3},
                      timeout=10, headers={"User-Agent": "beersheva-basket-bot"})
     for f in r.json().get("features", []):
         lon, lat = f["geometry"]["coordinates"]
-        if _in_bbox(lat, lon):
+        if _in_bbox(lat, lon, b):
             return lat, lon
     return None
 
@@ -459,15 +501,16 @@ def geocode(q: str, con=None, bbox=True):
     row = con.execute("SELECT lat,lon FROM geocache WHERE q=?", (q,)).fetchone()
     if row and row[0] is not None:
         return row
+    box = tuple(bbox) if isinstance(bbox, (list, tuple)) else None
     res, net_error = None, False
-    for fn in (_nominatim, _photon):
+    for fn in (_nominatim, lambda x: _photon(x, box)):
         try:
             res = fn(q)
         except Exception as e:  # noqa
-            log.warning("geocode %s failed for %s: %s", fn.__name__, q, e)
+            log.warning("geocode failed for %s: %s", q, e)
             net_error = True
             continue
-        if res and bbox and not _in_bbox(*res):
+        if res and bbox and not _in_bbox(*res, box):
             res = None
         if res:
             break
@@ -487,12 +530,14 @@ def _clean_addr(a: str) -> str:
 
 def geocode_stores(con, report=print, retry_failed=True):
     """מאתר מיקום לסניפים בלי קואורדינטות. מנסה כמה ניסוחים של הכתובת ושני שירותי מפות חינמיים."""
-    city = "באר שבע"
+    cfg = load_config()
     if retry_failed:
         con.execute("DELETE FROM geocache WHERE lat IS NULL")
-    rows = con.execute("SELECT chain,store_id,address,name FROM stores WHERE lat IS NULL").fetchall()
+    rows = con.execute("SELECT chain,store_id,address,name,city_id FROM stores WHERE lat IS NULL").fetchall()
     found = 0
-    for chain, sid, addr, name in rows:
+    for chain, sid, addr, name, cid in rows:
+        c = city_by_id(cfg, cid)
+        city, box = c["name"], c.get("bbox")
         a, n = _clean_addr(addr), _clean_addr(name)
         n = re.sub(r"^\d+\s*", "", n)  # "58 סניף אורגים" -> "סניף אורגים"
         tries = []
@@ -505,7 +550,7 @@ def geocode_stores(con, report=print, retry_failed=True):
             tries.append(f"{n}, {city}")
         res = None
         for q in [t for t in tries if t]:
-            res = geocode(q, con)
+            res = geocode(q, con, bbox=box or True)
             if res:
                 break
         if res:
@@ -806,7 +851,7 @@ class StoreResult:
 
 
 def compare_data(text: str = None, location=None, terms: list | None = None,
-                 sort: str = "price", max_km: float | None = None) -> dict:
+                 sort: str = "price", max_km: float | None = None, city: str | None = None) -> dict:
     """השוואת סל – תוצאה מובנית (משמשת את אפליקציית הווב, הצ'אט וטלגרם)."""
     cfg = load_config()
     items = load_items()
@@ -827,7 +872,11 @@ def compare_data(text: str = None, location=None, terms: list | None = None,
         lat, lon, approx = home_location(cfg)
     else:
         lat, lon, approx = location[0], location[1], False
-    stores = con.execute("SELECT chain,store_id,chain_name,name,address,lat,lon FROM stores").fetchall()
+    city_id = city_by_id(cfg, city)["id"]
+    first_city = cities(cfg)[0]["id"]
+    stores = [r[:7] for r in con.execute(
+        "SELECT chain,store_id,chain_name,name,address,lat,lon,city_id FROM stores").fetchall()
+        if (r[7] or first_city) == city_id]
     if not stores:
         return {"error": "אין עדיין נתוני מחירים. לחץ על \"עדכון מחירים\"."}
 

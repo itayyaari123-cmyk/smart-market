@@ -117,9 +117,14 @@ button{font:inherit;cursor:pointer;border:0}
   </header>
 
   <div class="card">
+    <p class="label">🏙️ באיזו עיר קונים?</p>
+    <div class="seg" id="citySeg"></div>
+  </div>
+
+  <div class="card">
     <p class="label">📍 המיקום שלי</p>
     <div class="row">
-      <input type="text" id="addr" placeholder="רחוב ומספר, עיר" autocomplete="street-address">
+      <input type="text" id="addr" placeholder="רחוב ומספר" autocomplete="street-address">
       <button class="btn-icon" title="המיקום הנוכחי" onclick="useGPS()">◎</button>
       <button class="btn-icon" title="שמור" onclick="saveAddr()">✓</button>
     </div>
@@ -206,36 +211,64 @@ function paintFilters(){
 }
 function setSort(v){ sortBy=v; store.set("sort",v); paintFilters(); if(lastResult) compare(); }
 function setKm(v){ maxKm=v; store.set("maxKm",v); paintFilters(); if(lastResult) compare(); }
-let gps = store.get("gps", null);
+let gps = null;
 
 let DB = null;
-let dbPromise = null;
-function loadDB(){
-  if(!dbPromise) dbPromise = fetch("data/prices.json", {cache:"no-cache"})
-    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
-    .then(raw=>{ DB = Basket.prepare(raw); return DB; });
-  return dbPromise;
+let CITIES = null;           // {default, cities:[{id,name,center,bbox,stores,...}]}
+let city = null;             // העיר הנבחרת
+const dbCache = {};
+async function loadCities(){
+  if(CITIES) return CITIES;
+  try{ const r = await fetch("data/cities.json", {cache:"no-cache"}); if(!r.ok) throw 0; CITIES = await r.json(); }
+  catch(e){ CITIES = {default:"beer-sheva", cities:[{id:"beer-sheva", name:"באר שבע", file:"prices.json",
+              center:[31.2518,34.7913], bbox:[31.17,31.33,34.70,34.90], stores:1}]}; }
+  return CITIES;
 }
+const cityInfo = id => CITIES.cities.find(c=>c.id===id) || CITIES.cities[0];
+function loadDB(){
+  const c = cityInfo(city);
+  if(!dbCache[c.id]) dbCache[c.id] = fetch("data/"+c.file, {cache:"no-cache"})
+    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(raw=>Basket.prepare(raw))
+    .catch(e=>{ delete dbCache[c.id]; throw e; });
+  return dbCache[c.id].then(db=>{ DB = db; return db; });
+}
+let dbPromise = null; // (תאימות)
 
-// איתור כתובת בדפדפן – OpenStreetMap (Nominatim), ואם לא נמצא – Photon. רק תוצאות באזור באר שבע.
-const BBOX = [31.17, 31.33, 34.70, 34.90];
-const inBox = (la,lo) => la>=BBOX[0] && la<=BBOX[1] && lo>=BBOX[2] && lo<=BBOX[3];
+// איתור כתובת בדפדפן – OpenStreetMap (Nominatim), ואם לא נמצא – Photon. רק תוצאות בתוך העיר הנבחרת.
 async function geocode(q){
-  const qs = /באר[\s-]?שבע|ב"ש/.test(q) ? [q] : [q + ", באר שבע", q];
+  const c = cityInfo(city), B = c.bbox;
+  const inBox = (la,lo) => la>=B[0] && la<=B[1] && lo>=B[2] && lo<=B[3];
+  const qs = q.includes(c.name) ? [q] : [q + ", " + c.name, q];
   for(const query of qs){
     try{
-      const u = "https://nominatim.openstreetmap.org/search?format=json&limit=3&countrycodes=il&accept-language=he&q="+encodeURIComponent(query);
+      const u = "https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=il&accept-language=he&q="+encodeURIComponent(query);
       const r = await (await fetch(u)).json();
       const hit = r.find(x=>inBox(+x.lat,+x.lon)); if(hit) return {lat:+hit.lat, lon:+hit.lon};
     }catch(e){}
     try{
-      const u = "https://photon.komoot.io/api/?limit=3&lat=31.25&lon=34.79&q="+encodeURIComponent(query);
+      const u = `https://photon.komoot.io/api/?limit=5&lat=${c.center[0]}&lon=${c.center[1]}&q=`+encodeURIComponent(query);
       const r = await (await fetch(u)).json();
       const f = (r.features||[]).find(f=>inBox(f.geometry.coordinates[1], f.geometry.coordinates[0]));
       if(f) return {lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0]};
     }catch(e){}
   }
   return null;
+}
+
+function renderCities(){
+  $("#citySeg").innerHTML = CITIES.cities.map(c=>`<button data-v="${c.id}" class="${c.id===city?"on":""}" onclick="setCity('${c.id}')">${esc(c.name)}</button>`).join("");
+}
+function setCity(id, keepResults){
+  if(id===city) return;
+  city = id; store.set("city", id);
+  gps = store.get("gps_"+id, null);
+  $("#addr").value = store.get("addr_"+id, "") || "";
+  $("#addrMsg").className="hint";
+  $("#addrMsg").textContent = gps ? "" : `הכנס כתובת ב${cityInfo(id).name} ולחץ ✓ (או ◎ למיקום הנוכחי) כדי לחשב מרחקים ממך`;
+  renderCities(); DB = null;
+  refreshStatus().catch(()=>{});
+  if(lastResult && !keepResults) compare(); else if(!keepResults) $("#results").innerHTML="";
 }
 
 function renderChips(){
@@ -259,17 +292,21 @@ async function saveAddr(){
   const a = $("#addr").value.trim(); if(!a) return;
   $("#addrMsg").className="hint"; $("#addrMsg").textContent="מאתר כתובת…";
   const r = await geocode(a);
-  if(r){ gps = r; store.set("gps", gps); store.set("addr", a); }
+  if(r){ gps = r; store.set("gps_"+city, gps); store.set("addr_"+city, a); }
   $("#addrMsg").className = "hint " + (r?"ok":"err");
-  $("#addrMsg").textContent = r ? "✓ המיקום נשמר" : `לא מצאתי את "${a}" בבאר שבע. נסה: רחוב ומספר`;
+  $("#addrMsg").textContent = r ? "✓ המיקום נשמר" : `לא מצאתי את "${a}" ב${cityInfo(city).name}. נסה: רחוב ומספר`;
   if(r && lastResult) compare();
 }
 function useGPS(){
   if(!navigator.geolocation){ $("#addrMsg").textContent="הדפדפן לא תומך במיקום"; return; }
   $("#addrMsg").className="hint"; $("#addrMsg").textContent="מאתר מיקום…";
   navigator.geolocation.getCurrentPosition(p=>{
-    gps = {lat:p.coords.latitude, lon:p.coords.longitude};
-    store.set("gps", gps); store.set("addr", "המיקום הנוכחי");
+    const here = {lat:p.coords.latitude, lon:p.coords.longitude};
+    // אם אתה נמצא בעיר אחרת מהרשימה – עוברים אליה אוטומטית
+    const inside = CITIES.cities.find(c=>c.bbox && here.lat>=c.bbox[0] && here.lat<=c.bbox[1] && here.lon>=c.bbox[2] && here.lon<=c.bbox[3]);
+    if(inside && inside.id!==city) setCity(inside.id, true);
+    gps = here;
+    store.set("gps_"+city, gps); store.set("addr_"+city, "המיקום הנוכחי");
     $("#addr").value = "המיקום הנוכחי"; $("#addrMsg").className="hint ok"; $("#addrMsg").textContent="✓ משתמש במיקום הנוכחי";
     if(lastResult) compare();
   }, ()=>{ $("#addrMsg").className="hint err";
@@ -297,7 +334,7 @@ function render(d){
   if(d.unknown_distance_excluded)
     h += `<div class="hint" style="margin:6px 4px">${d.unknown_distance_excluded} סניפים לא נכללו כי המיקום שלהם עדיין לא ידוע</div>`;
   if(d.not_found_anywhere.length)
-    h += `<div class="card" style="background:var(--gold-soft);border-color:transparent;font-size:14px">⚠️ לא נמצא באף סופר בבאר שבע: <b>${d.not_found_anywhere.map(esc).join(", ")}</b></div>`;
+    h += `<div class="card" style="background:var(--gold-soft);border-color:transparent;font-size:14px">⚠️ לא נמצא באף סופר ב${esc(cityInfo(city).name)}: <b>${d.not_found_anywhere.map(esc).join(", ")}</b></div>`;
   h += `<div class="card hero">
       <span class="tag">${d.sort==="distance" ? "📍 הכי קרוב" : "🏆 הכי משתלם"}</span>
       <h2>${logo(best.chain, best.chain_name)}${esc(best.chain_name)} · ${esc(best.store)}</h2>
@@ -348,6 +385,7 @@ async function compare(){
   $("#results").innerHTML = `<div class="card empty"><div class="spinner"></div>${DB ? "משווה מחירים בכל הסניפים…" : "טוען את מחירי הסופרים (בפעם הראשונה זה לוקח כמה שניות)…"}</div>`;
   try{
     const db = await loadDB();
+    if(!db.stores.length){ render({error:`עדיין אין נתוני מחירים ל${cityInfo(city).name}. הם יתווספו בעדכון האוטומטי הקרוב (כל בוקר).`}); $("#go").disabled=false; return; }
     await new Promise(r=>setTimeout(r,30));
     lastResult = Basket.compare(db, items, {sort:sortBy, max_km:maxKm||null, ...(gps||{})});
     render(lastResult);
@@ -358,19 +396,31 @@ async function compare(){
 function fmtWhen(s){ return s ? new Date(s).toLocaleString("he-IL",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"}) : "—"; }
 async function refreshStatus(){
   $("#dataPill").textContent = "טוען מחירים…";
+  const want = city;
   const db = await loadDB();
+  if(want!==city) return;
   known = Object.keys(db.items); renderChips();
   const chains = new Set(db.stores.map(s=>s.chain)).size, located = db.stores.filter(s=>s.lat).length;
-  $("#dataPill").textContent = `מחירים: ${fmtWhen(db.last_update)}`;
-  $("#sheetInfo").innerHTML = `עודכן לאחרונה: <b>${fmtWhen(db.last_update)}</b> · ${db.stores.length} סניפים מ-${chains} רשתות · ל-${located} מהם יש מיקום על המפה`;
+  const stale = db.stores.filter(s=>s.stale).length;
+  $("#dataPill").textContent = db.stores.length ? `${cityInfo(city).name} · ${fmtWhen(db.last_update)}` : `${cityInfo(city).name} · אין נתונים עדיין`;
+  $("#sheetInfo").innerHTML = `<b>${esc(cityInfo(city).name)}</b> · עודכן לאחרונה: <b>${fmtWhen(db.last_update)}</b><br>${db.stores.length} סניפים מ-${chains} רשתות · ל-${located} מהם יש מיקום על המפה${stale?`<br>⚠️ ${stale} סניפים עם מחירים מיום קודם (הרשת לא התעדכנה היום)`:""}`;
 }
 function openSheet(){ $("#sheet").classList.add("show"); }
 function closeSheet(){ $("#sheet").classList.remove("show"); }
 
-$("#addr").value = store.get("addr", "") || "";
-if(!gps) $("#addrMsg").textContent = "הכנס כתובת בבאר שבע ולחץ ✓ (או ◎ למיקום הנוכחי) כדי לחשב מרחקים ממך";
-renderChips(); paintFilters();
-refreshStatus().catch(()=>{ $("#dataPill").textContent="אין חיבור"; });
+(async function init(){
+  renderChips(); paintFilters();
+  await loadCities();
+  const saved = store.get("city", null);
+  city = CITIES.cities.some(c=>c.id===saved) ? saved : CITIES.default;
+  // תאימות: מיקום שנשמר בגרסה הקודמת (באר שבע בלבד)
+  if(!store.get("gps_beer-sheva", null) && store.get("gps", null)){ store.set("gps_beer-sheva", store.get("gps", null)); store.set("addr_beer-sheva", store.get("addr", "")); }
+  gps = store.get("gps_"+city, null);
+  $("#addr").value = store.get("addr_"+city, "") || "";
+  if(!gps) $("#addrMsg").textContent = `הכנס כתובת ב${cityInfo(city).name} ולחץ ✓ (או ◎ למיקום הנוכחי) כדי לחשב מרחקים ממך`;
+  renderCities();
+  refreshStatus().catch(()=>{ $("#dataPill").textContent="אין חיבור"; });
+})();
 </script>
 </body>
 </html>

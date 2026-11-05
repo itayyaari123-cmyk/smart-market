@@ -35,31 +35,34 @@ def save_geo(con):
     GEO.write_text(json.dumps(geo, ensure_ascii=False, indent=0, sort_keys=True), encoding="utf-8")
 
 
-def load_previous():
-    """המחירים שפורסמו אתמול (או קובץ ההתחלה). משמש כגיבוי לרשת שההורדה שלה נכשלה היום."""
-    url = os.environ.get("PREVIOUS_DATA_URL")
-    if url:
-        try:
-            import requests
-            r = requests.get(url, timeout=60)
-            if r.ok:
-                print("loaded previous data from", url)
-                return r.json()
-        except Exception as e:  # noqa
-            print("previous data unavailable:", e)
-    seed = ROOT / "seed" / "prices.json"
-    if seed.exists():
-        print("using seed data as fallback")
-        return json.loads(seed.read_text(encoding="utf-8"))
+def load_previous(city_id):
+    """המחירים שפורסמו אתמול לעיר הזו. משמש כגיבוי לרשת שההורדה שלה נכשלה היום."""
+    base = os.environ.get("PREVIOUS_DATA_URL", "").rsplit("/", 1)[0]
+    if base:
+        import requests
+        names = [f"{city_id}.json"] + (["prices.json"] if city_id == "beer-sheva" else [])
+        for name in names:
+            try:
+                r = requests.get(f"{base}/{name}", timeout=60)
+                if r.ok:
+                    print(f"[{city_id}] previous data: {base}/{name}")
+                    return r.json()
+            except Exception as e:  # noqa
+                print(f"[{city_id}] previous data unavailable ({name}): {e}")
+    for seed in (ROOT / "seed" / f"{city_id}.json", ROOT / "seed" / "prices.json" if city_id == "beer-sheva" else None):
+        if seed and seed.exists():
+            print(f"[{city_id}] using seed {seed.name}")
+            return json.loads(seed.read_text(encoding="utf-8"))
     return None
 
 
-def export(con):
-    cfg = core.load_config()
+def export_city(con, cfg, city):
+    cid = city["id"]
+    first = core.cities(cfg)[0]["id"]
     products, index, stores = [], {}, []
-    for chain, sid, cname, name, addr, lat, lon in con.execute(
-            "SELECT chain,store_id,chain_name,name,address,lat,lon FROM stores ORDER BY rowid"):
-        if chain not in cfg["chains"]:
+    for chain, sid, cname, name, addr, lat, lon, scid in con.execute(
+            "SELECT chain,store_id,chain_name,name,address,lat,lon,city_id FROM stores ORDER BY rowid"):
+        if chain not in cfg["chains"] or (scid or first) != cid:
             continue
         flat = []
         for iname, price, qty, unit, w in con.execute(
@@ -74,14 +77,14 @@ def export(con):
         stores.append({"chain": chain, "id": sid, "name": name, "address": addr,
                        "lat": round(lat, 6) if lat else None, "lon": round(lon, 6) if lon else None, "items": flat})
     # רשת שלא ירדה היום (אתר תקול/חסום) – משאירים את המחירים הקודמים שלה, עם סימון
-    prev = load_previous()
+    prev = load_previous(cid)
+    fresh = {(s["chain"], s["id"]) for s in stores}
     fresh_chains = {s["chain"] for s in stores}
     carried = []
     if prev:
         for s in prev.get("stores", []):
-            if s["chain"] in cfg["chains"] and s["chain"] not in fresh_chains:
-                flat = []
-                it = s["items"]
+            if s["chain"] in cfg["chains"] and s["chain"] not in fresh_chains and (s["chain"], s["id"]) not in fresh:
+                flat, it = [], s["items"]
                 for i in range(0, len(it), 2):
                     pname, amount, dim, w = prev["products"][it[i]]
                     key = (pname, (amount, dim) if dim else None, int(w))
@@ -93,19 +96,37 @@ def export(con):
                 stores.append({**s, "items": flat, "stale": s.get("stale") or prev.get("last_update")})
                 carried.append(s["chain"])
     if carried:
-        print("carried over from previous data:", sorted(set(carried)))
+        print(f"[{cid}] carried over from previous data:", sorted(set(carried)))
     last = (con.execute("SELECT v FROM meta WHERE k='last_update'").fetchone() or [None])[0]
-    keep = ["chains", "radius_km", "exclude_store_words", "missing_item_penalty", "min_coverage", "home_lat", "home_lon",
-            "city_names"]
+    keep = ["chains", "radius_km", "exclude_store_words", "missing_item_penalty", "min_coverage"]
+    conf = {k: cfg.get(k) for k in keep}
+    conf.update(home_lat=city["center"][0], home_lon=city["center"][1], city_id=cid, city_name=city["name"],
+                bbox=city.get("bbox"))
     data = {
-        "version": 1, "last_update": last, "built": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
-        "config": {k: cfg.get(k) for k in keep}, "chain_names": core.CHAIN_HE, "items": core.load_items(),
+        "version": 2, "last_update": last, "built": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
+        "config": conf, "chain_names": core.CHAIN_HE, "items": core.load_items(),
         "products": products, "stores": stores,
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"exported {len(stores)} stores, {len(products):,} products, {OUT.stat().st_size/1e6:.1f} MB")
-    return len(stores)
+    out = OUT.parent / f"{cid}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"[{cid}] exported {len(stores)} stores, {len(products):,} products, {out.stat().st_size/1e6:.1f} MB")
+    return {"id": cid, "name": city["name"], "center": city["center"], "bbox": city.get("bbox"),
+            "stores": len(stores), "chains": len({s["chain"] for s in stores}),
+            "stale_stores": sum(1 for s in stores if s.get("stale")), "file": out.name, "last_update": last}
+
+
+def export(con):
+    cfg = core.load_config()
+    index = [export_city(con, cfg, c) for c in core.cities(cfg)]
+    (OUT.parent / "cities.json").write_text(json.dumps({"default": cfg.get("default_city") or index[0]["id"],
+                                                         "cities": index}, ensure_ascii=False, indent=1),
+                                            encoding="utf-8")
+    # תאימות לאחור: הכתובת הישנה של באר שבע ממשיכה לעבוד
+    bs = OUT.parent / "beer-sheva.json"
+    if bs.exists():
+        OUT.write_bytes(bs.read_bytes())
+    return sum(c["stores"] for c in index)
 
 
 def main():
