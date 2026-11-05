@@ -56,6 +56,16 @@ def load_previous(city_id):
     return None
 
 
+def load_contrib(city_id):
+    """נתונים שהמחשב הביתי הוריד (contrib/<city>.json.gz) – לרשתות שחוסמות את השרתים של GitHub."""
+    import gzip
+    f = ROOT / "contrib" / f"{city_id}.json.gz"
+    if f.exists():
+        print(f"[{city_id}] contrib data from home computer: {f.name}")
+        return json.loads(gzip.decompress(f.read_bytes()).decode("utf-8"))
+    return None
+
+
 def export_city(con, cfg, city):
     cid = city["id"]
     first = core.cities(cfg)[0]["id"]
@@ -76,27 +86,35 @@ def export_city(con, cfg, city):
             flat += [pid, round(price, 2)]
         stores.append({"chain": chain, "id": sid, "name": name, "address": addr,
                        "lat": round(lat, 6) if lat else None, "lon": round(lon, 6) if lon else None, "items": flat})
-    # רשת שלא ירדה היום (אתר תקול/חסום) – משאירים את המחירים הקודמים שלה, עם סימון
-    prev = load_previous(cid)
-    fresh = {(s["chain"], s["id"]) for s in stores}
+    # רשת שלא ירדה היום (אתר תקול/חסום) – לוקחים את הגרסה הכי עדכנית שיש לנו ממנה:
+    # מה שפורסם אתמול, או מה שהמחשב הביתי שלח (contrib). מסומן כ"לא מהיום".
     fresh_chains = {s["chain"] for s in stores}
+    best = {}
+    for src in (load_previous(cid), load_contrib(cid)):
+        if not src:
+            continue
+        for s in src.get("stores", []):
+            if s["chain"] not in cfg["chains"] or s["chain"] in fresh_chains:
+                continue
+            when = s.get("stale") or src.get("last_update") or ""
+            k = (s["chain"], s["id"])
+            if k not in best or when > best[k][0]:
+                best[k] = (when, s, src["products"])
     carried = []
-    if prev:
-        for s in prev.get("stores", []):
-            if s["chain"] in cfg["chains"] and s["chain"] not in fresh_chains and (s["chain"], s["id"]) not in fresh:
-                flat, it = [], s["items"]
-                for i in range(0, len(it), 2):
-                    pname, amount, dim, w = prev["products"][it[i]]
-                    key = (pname, (amount, dim) if dim else None, int(w))
-                    pid = index.get(key)
-                    if pid is None:
-                        pid = index[key] = len(products)
-                        products.append([pname, amount, dim, int(w)])
-                    flat += [pid, it[i + 1]]
-                stores.append({**s, "items": flat, "stale": s.get("stale") or prev.get("last_update")})
-                carried.append(s["chain"])
+    for when, s, prods in best.values():
+        flat, it = [], s["items"]
+        for i in range(0, len(it), 2):
+            pname, amount, dim, w = prods[it[i]]
+            key = (pname, (amount, dim) if dim else None, int(w))
+            pid = index.get(key)
+            if pid is None:
+                pid = index[key] = len(products)
+                products.append([pname, amount, dim, int(w)])
+            flat += [pid, it[i + 1]]
+        stores.append({**s, "items": flat, "stale": when})
+        carried.append(s["chain"])
     if carried:
-        print(f"[{cid}] carried over from previous data:", sorted(set(carried)))
+        print(f"[{cid}] carried over (not updated today):", sorted(set(carried)))
     last = (con.execute("SELECT v FROM meta WHERE k='last_update'").fetchone() or [None])[0]
     keep = ["chains", "radius_km", "exclude_store_words", "missing_item_penalty", "min_coverage"]
     conf = {k: cfg.get(k) for k in keep}
