@@ -47,7 +47,12 @@
   "daily_update_hour": 7,
   "exclude_store_words": [
     "וולט",
-    "wolt"
+    "wolt",
+    "אונליין",
+    "@",
+    "quik",
+    "קוויק",
+    "online"
   ],
   "cities": [
     {
@@ -127,6 +132,31 @@
       "center": [
         32.0956,
         34.9571
+      ]
+    },
+    {
+      "id": "kfar-saba",
+      "name": "כפר סבא",
+      "names": [
+        "כפר סבא",
+        "כפר-סבא",
+        "כפר סבא",
+        "kfar saba",
+        "kfar-saba",
+        "kfar sava"
+      ],
+      "codes": [
+        "6900"
+      ],
+      "bbox": [
+        32.15,
+        32.21,
+        34.86,
+        34.96
+      ],
+      "center": [
+        32.1782,
+        34.9076
       ]
     }
   ],

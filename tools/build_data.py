@@ -57,11 +57,22 @@ def load_previous(city_id):
 
 
 def load_contrib(city_id):
-    """נתונים שהמחשב הביתי הוריד (contrib/<city>.json.gz) – לרשתות שחוסמות את השרתים של GitHub."""
+    """נתונים שהמחשב הביתי הוריד – לרשתות שחוסמות את השרתים של GitHub.
+    קודם מה-Release בשם home-data (המחשב הביתי מעדכן אותו כל יום), ואם אין – מהקבצים במאגר (contrib/)."""
     import gzip
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if repo:
+        try:
+            import requests
+            r = requests.get(f"https://github.com/{repo}/releases/download/home-data/{city_id}.json.gz", timeout=120)
+            if r.ok and r.content[:2] == b"\x1f\x8b":
+                print(f"[{city_id}] home-computer data from release home-data")
+                return json.loads(gzip.decompress(r.content).decode("utf-8"))
+        except Exception as e:  # noqa
+            print(f"[{city_id}] release data unavailable: {e}")
     f = ROOT / "contrib" / f"{city_id}.json.gz"
     if f.exists():
-        print(f"[{city_id}] contrib data from home computer: {f.name}")
+        print(f"[{city_id}] home-computer data from repo: {f.name}")
         return json.loads(gzip.decompress(f.read_bytes()).decode("utf-8"))
     return None
 
