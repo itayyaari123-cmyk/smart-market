@@ -85,18 +85,10 @@ def export_city(con, cfg, city):
             "SELECT chain,store_id,chain_name,name,address,lat,lon,city_id FROM stores ORDER BY rowid"):
         if chain not in cfg["chains"] or (scid or first) != cid:
             continue
-        flat = []
-        for iname, price, qty, unit, w in con.execute(
-                "SELECT name,price,qty,unit,weighted FROM items WHERE chain=? AND store_id=? ORDER BY rowid", (chain, sid)):
-            qd = core.quantity_of(iname, qty, unit, bool(w))
-            key = (iname, qd, int(w))
-            pid = index.get(key)
-            if pid is None:
-                pid = index[key] = len(products)
-                products.append([iname, round(qd[0], 2) if qd else 0, qd[1] if qd else "", int(w)])
-            flat += [pid, round(price, 2)]
+        flat, pflat, descs = core.export_store(con, chain, sid, products, index)
         stores.append({"chain": chain, "id": sid, "name": name, "address": addr,
-                       "lat": round(lat, 6) if lat else None, "lon": round(lon, 6) if lon else None, "items": flat})
+                       "lat": round(lat, 6) if lat else None, "lon": round(lon, 6) if lon else None,
+                       "items": flat, "promos": pflat, "pd": descs})
     # רשת שלא ירדה היום (אתר תקול/חסום) – לוקחים את הגרסה הכי עדכנית שיש לנו ממנה:
     # מה שפורסם אתמול, או מה שהמחשב הביתי שלח (contrib). מסומן כ"לא מהיום".
     fresh_chains = {s["chain"] for s in stores}
@@ -113,16 +105,7 @@ def export_city(con, cfg, city):
                 best[k] = (when, s, src["products"])
     carried = []
     for when, s, prods in best.values():
-        flat, it = [], s["items"]
-        for i in range(0, len(it), 2):
-            pname, amount, dim, w = prods[it[i]]
-            key = (pname, (amount, dim) if dim else None, int(w))
-            pid = index.get(key)
-            if pid is None:
-                pid = index[key] = len(products)
-                products.append([pname, amount, dim, int(w)])
-            flat += [pid, it[i + 1]]
-        stores.append({**s, "items": flat, "stale": when})
+        stores.append({**core.remap_store(s, prods, products, index), "stale": when})
         carried.append(s["chain"])
     if carried:
         print(f"[{cid}] carried over (not updated today):", sorted(set(carried)))
@@ -132,14 +115,15 @@ def export_city(con, cfg, city):
     conf.update(home_lat=city["center"][0], home_lon=city["center"][1], city_id=cid, city_name=city["name"],
                 bbox=city.get("bbox"))
     data = {
-        "version": 2, "last_update": last, "built": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
+        "version": 3, "last_update": last, "built": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
         "config": conf, "chain_names": core.CHAIN_HE, "items": core.load_items(),
         "products": products, "stores": stores,
     }
     out = OUT.parent / f"{cid}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"[{cid}] exported {len(stores)} stores, {len(products):,} products, {out.stat().st_size/1e6:.1f} MB")
+    print(f"[{cid}] exported {len(stores)} stores, {len(products):,} products, "
+          f"{sum(len(s.get('promos') or []) for s in stores)//5:,} promos, {out.stat().st_size/1e6:.1f} MB")
     return {"id": cid, "name": city["name"], "center": city["center"], "bbox": city.get("bbox"),
             "stores": len(stores), "chains": len({s["chain"] for s in stores}),
             "stale_stores": sum(1 for s in stores if s.get("stale")), "file": out.name, "last_update": last}

@@ -62,6 +62,17 @@ button{font:inherit;cursor:pointer;border:0}
   color:#fff;font-size:12px;font-weight:800;vertical-align:-5px;margin-inline-end:6px;background:#607d8b;position:relative}
 .logo img{width:100%;height:100%;object-fit:contain;background:#fff;position:absolute;inset:0}
 .hero .logo{width:26px;height:26px;vertical-align:-5px;box-shadow:0 0 0 2px rgba(255,255,255,.5)}
+.promo{display:inline-block;background:var(--gold-soft);color:#8a5a00;border-radius:6px;padding:1px 7px;font-size:11.5px;font-weight:700;margin-top:3px}
+@media (prefers-color-scheme: dark){ .promo{color:var(--gold)} }
+.was{text-decoration:line-through;color:var(--muted);font-weight:400;font-size:12px;margin-inline-end:6px}
+.deal{margin-top:6px;background:var(--brand-soft);border-radius:10px;padding:7px 10px;font-size:12.5px;line-height:1.5;color:var(--ink);border-inline-start:3px solid var(--brand)}
+.deal b{color:var(--brand)}
+.hero .promo{background:var(--gold);color:#3b2a00}
+.hero .was{color:rgba(255,255,255,.7)}
+.hero .deal{background:rgba(255,255,255,.14);color:#fff;border-inline-start-color:var(--gold)}
+.hero .deal b{color:#ffe6a6}
+.switch{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:14px;cursor:pointer}
+.switch input{width:20px;height:20px;accent-color:var(--brand)}
 .dist-big{font-weight:800;color:var(--brand)}
 .section-title{font-size:18px;font-weight:800;margin:26px 4px 2px}
 .section-sub{font-size:13px;color:var(--muted);margin:0 4px}
@@ -161,11 +172,13 @@ button{font:inherit;cursor:pointer;border:0}
       <button data-v="5" onclick="setKm('5')">עד 5 ק"מ</button>
     </div>
     <div class="hint" id="kmHint"></div>
+    <label class="switch"><input type="checkbox" id="clubChk" onchange="setClub(this.checked)">
+      <span>🎫 לכלול מבצעי מועדון <span class="hint">(למי שיש כרטיס מועדון של הרשת)</span></span></label>
   </div>
 
   <div id="results"></div>
 
-  <p class="note">המחירים מגיעים מקבצי המחירים שהרשתות מחויבות לפרסם לפי חוק. מחירי מדף בלבד, בלי מבצעים ומועדון.
+  <p class="note">המחירים מגיעים מקבצי המחירים שהרשתות מחויבות לפרסם לפי חוק. המחיר כולל מבצעים שתקפים היום לכל הלקוחות על יחידה אחת; מבצעי כמות ("3 ב-10") ומבצעי מועדון מוצגים כהצעה 💡 ולא נכנסים לסכום, אלא אם סימנת שיש לך מועדון. לא כולל קופונים והטבות אשראי.
   כשמוצר נמכר בגדלים שונים, המחיר מחושב לכמות השוואה אחידה (חלב = 1 ליטר, ביצים = 12 וכו'), והבוט בוחר את האפשרות הזולה בלי קשר למותג.</p>
 </div>
 
@@ -210,6 +223,8 @@ function paintFilters(){
   document.querySelectorAll("#kmSeg button").forEach(b=>b.classList.toggle("on", b.dataset.v===String(maxKm)));
 }
 function setSort(v){ sortBy=v; store.set("sort",v); paintFilters(); if(lastResult) compare(); }
+let useClub = store.get("club", false);
+function setClub(v){ useClub=!!v; store.set("club",useClub); if(lastResult) compare(); }
 function setKm(v){ maxKm=v; store.set("maxKm",v); paintFilters(); if(lastResult) compare(); }
 let gps = null;
 
@@ -313,10 +328,22 @@ function useGPS(){
     $("#addrMsg").textContent="אין גישה למיקום. אפשר להקליד כתובת ולשמור."; }, {enableHighAccuracy:true, timeout:15000});
 }
 
+function dealHtml(p){
+  const d = p.deal; if(!d) return "";
+  const qty = d.weighted ? `מ-${d.min} ק"ג` : `${d.min} יח' ב-${money(d.total)}`;
+  const other = d.same ? "" : ` על <b>${esc(d.product)}</b>${d.size?` (${esc(d.size)})`:""}`;
+  return `<div class="deal">💡 ${d.club?"<b>מועדון</b> · ":""}מבצע כמות${other}: <b>${qty}</b> – יוצא ${money(d.cost)}${p.per?` ל-${esc(p.per)}`:" ליחידה"} במקום ${money(p.cost)}<br><span style="opacity:.75">${esc(d.desc)}</span></div>`;
+}
 function storeLines(picks){
   return picks.map(p => p.found
-    ? `<div class="line"><div><div class="n">${esc(p.item)}</div><div class="p">${esc(p.product)}${p.size?` · ${esc(p.size)}`:""}${p.per?` · מחיר מדף ${money(p.shelf_price)}, מחושב ל-${esc(p.per)}`:""}</div></div><div class="c">${money(p.cost)}</div></div>`
+    ? `<div class="line"><div style="min-width:0;flex:1"><div class="n">${esc(p.item)}</div><div class="p">${esc(p.product)}${p.size?` · ${esc(p.size)}`:""}${p.per?` · מחיר מדף ${money(p.shelf_price)}, מחושב ל-${esc(p.per)}`:""}</div>${p.promo?`<span class="promo">🏷️ ${p.promo.club?"מבצע מועדון":"מבצע"}: ${esc(p.promo.desc)}</span>`:""}${dealHtml(p)}</div><div class="c">${p.promo?`<span class="was">${money(p.promo.shelf_cost)}</span>`:""}${money(p.cost)}</div></div>`
     : `<div class="line no"><div class="n">${esc(p.item)}</div><div class="c">אין בסניף</div></div>`).join("");
+}
+function promoSummary(r){
+  const a = [];
+  if(r.promo_saving > 0.01) a.push(`🏷️ המחיר כולל מבצעים – חסכון של ${money(r.promo_saving)}`);
+  if(r.deals) a.push(`💡 ${r.deals} הצעות לקנייה בכמות – עוד עד ${money(r.deal_saving)}`);
+  return a.join(" · ");
 }
 function haveText(r){
   if(!r.missing.length) return `<b>✓ יש את כל הרשימה</b> (${r.found.length} מוצרים)`;
@@ -346,6 +373,7 @@ function render(d){
         : (second?`<div class="save">זול ב-${money(second.total-best.total)} מ${esc(second.chain_name)}</div>`:"")}
       <div class="chips">${best.found.map(t=>`<span class="chip sm">✓ ${esc(t)}</span>`).join("")}${best.missing.map(t=>`<span class="chip sm miss">✕ ${esc(t)}</span>`).join("")}</div>
       ${best.missing.length?`<div class="hint" style="color:#fff;opacity:.85">המחיר כולל את החסרים לפי המחיר הזול ביותר בסניף אחר</div>`:""}
+      ${promoSummary(best)?`<div class="save" style="font-size:13px">${promoSummary(best)}</div>`:""}
       <button class="toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">מה בדיוק קונים כאן ▾</button>
       <div class="details" style="display:none">${storeLines(best.picks)}</div>
     </div>`;
@@ -358,7 +386,7 @@ function render(d){
         <div><div class="tot">${money(r.total)}</div>${d.sort==="distance"
           ? `<div class="delta" style="color:var(--brand)">${r.distance_km!=null?r.distance_km+' ק"מ':""}</div>`
           : `<div class="delta">+${money(r.total-best.total)}</div>`}</div>
-        <div class="have">${haveText(r)}</div>
+        <div class="have">${haveText(r)}${promoSummary(r)?`<div style="color:var(--muted);margin-top:3px">${promoSummary(r)}</div>`:""}</div>
         <div class="details">${storeLines(r.picks)}</div>
       </div>`;
     });
@@ -387,7 +415,7 @@ async function compare(){
     const db = await loadDB();
     if(!db.stores.length){ render({error:`עדיין אין נתוני מחירים ל${cityInfo(city).name}. הם יתווספו בעדכון האוטומטי הקרוב (כל בוקר).`}); $("#go").disabled=false; return; }
     await new Promise(r=>setTimeout(r,30));
-    lastResult = Basket.compare(db, items, {sort:sortBy, max_km:maxKm||null, ...(gps||{})});
+    lastResult = Basket.compare(db, items, {sort:sortBy, max_km:maxKm||null, club:useClub, ...(gps||{})});
     render(lastResult);
   }catch(e){ console.error(e); render({error:"לא הצלחתי לטעון את נתוני המחירים. בדוק את החיבור לאינטרנט ונסה שוב."}); dbPromise=null; }
   $("#go").disabled = false;
@@ -411,7 +439,7 @@ function openSheet(){ $("#sheet").classList.add("show"); }
 function closeSheet(){ $("#sheet").classList.remove("show"); }
 
 (async function init(){
-  renderChips(); paintFilters();
+  renderChips(); paintFilters(); $("#clubChk").checked = useClub;
   await loadCities();
   const saved = store.get("city", null);
   city = CITIES.cities.some(c=>c.id===saved) ? saved : CITIES.default;

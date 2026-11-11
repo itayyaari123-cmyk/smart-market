@@ -86,6 +86,7 @@ def build_contrib(db_path, out_dir):
     import core
     cfg = core.load_config()
     con = sqlite3.connect(db_path)
+    con.executescript(core.SCHEMA)
     cols = {r[1] for r in con.execute("PRAGMA table_info(stores)")}
     first = core.cities(cfg)[0]["id"]
     excl = [core.norm(w) for w in cfg.get("exclude_store_words", [])]
@@ -98,18 +99,10 @@ def build_contrib(db_path, out_dir):
         for chain, sid, name, addr, lat, lon, upd, scid in con.execute(q).fetchall():
             if chain not in cfg["chains"] or (scid or first) != cid or any(w in core.norm(name) for w in excl):
                 continue
-            flat = []
-            for iname, price, qty, unit, w in con.execute(
-                    "SELECT name,price,qty,unit,weighted FROM items WHERE chain=? AND store_id=?", (chain, sid)):
-                qd = core.quantity_of(iname, qty, unit, bool(w))
-                key = (iname, qd, int(w))
-                pid = index.get(key)
-                if pid is None:
-                    pid = index[key] = len(products)
-                    products.append([iname, round(qd[0], 2) if qd else 0, qd[1] if qd else "", int(w)])
-                flat += [pid, round(price, 2)]
+            flat, pflat, descs = core.export_store(con, chain, sid, products, index)
             stores.append({"chain": chain, "id": sid, "name": name, "address": addr, "stale": upd,
-                           "lat": round(lat, 6) if lat else None, "lon": round(lon, 6) if lon else None, "items": flat})
+                           "lat": round(lat, 6) if lat else None, "lon": round(lon, 6) if lon else None,
+                           "items": flat, "promos": pflat, "pd": descs})
         data = {"products": products, "stores": stores,
                 "last_update": max((s["stale"] or "" for s in stores), default=None)}
         f = out_dir / f"{cid}.json.gz"

@@ -125,12 +125,16 @@
   }
 
   // מוצר במאגר: P[i] = {name, n (מנורמל), amount, dim, w (שקיל)}
-  function bestFrom(cands, spec) {
+  // cands: [product, shelfPrice, pid].  promos: Map(pid -> [{min, unit, club, desc}]) של הסניף.
+  // מבצע "פשוט" (מיחידה אחת, לכל הלקוחות – או מועדון אם המשתמש סימן שיש לו) נכנס אוטומטית למחיר.
+  // מבצע כמות ("3 ב-10") או מועדון לא נכנס למחיר, אלא מוחזר כהצעה (deal) אם הוא זול יותר ממה שנבחר.
+  function bestFrom(cands, spec, promos, opt) {
     const target = spec.target;
     const minPrice = spec.min_price ?? 1.0;
     const c = compileSpec(spec);
-    let best = null;
-    for (const [p, price] of cands) {
+    const useClub = !!(opt && opt.club);
+    let best = null, deal = null;
+    for (const [p, price, pid] of cands) {
       if (price < minPrice) continue;
       const nname = p.n;
       if (GLOBAL_NONE.some(w => nname.includes(w))) continue;
@@ -138,7 +142,7 @@
       const weighted = !!p.w;
       if (c.need.length && !weighted && !c.need.some(w => nname.includes(w))) continue;
       const qd = p.dim ? [p.amount, p.dim] : null;
-      let cost = price, size = "";
+      let ratio = 1, size = "";
       if (target) {
         const [tAmount, tDim] = target;
         let amount = null;
@@ -147,16 +151,30 @@
           else amount = tAmount > 1 ? countInName(nname) : 1;
         } else if (qd && qd[1] === "w") amount = qd[0];
         if (!amount) continue;
-        const ratio = amount / tAmount;
+        ratio = amount / tAmount;
         if (!weighted && !(ratio >= 0.4 && ratio <= 2.5)) continue;
-        cost = price / ratio;
         if (weighted) size = 'שקיל, לק"ג';
         else if (tDim === "u") size = `${fmtG(amount)} יח'`;
         else size = amount >= 1000 ? `${fmtG(amount / 1000)} ק"ג/ליטר` : `${fmtG(amount)} גרם/מ"ל`;
       }
+      let eff = price, applied = null;
+      const ps = promos ? promos.get(pid) : null;
+      if (ps) for (const d of ps) {
+        const auto = d.min <= 1.001 && (!d.club || useClub);
+        if (auto) { if (d.unit < eff) { eff = d.unit; applied = d; } }
+        else {
+          const dc = d.unit / ratio;
+          if (!deal || dc < deal.cost) deal = { name: p.name, size, weighted, min: d.min, unit: d.unit, club: !!d.club, desc: d.desc, cost: dc };
+        }
+      }
+      const cost = eff / ratio;
       if (!best || cost < best.cost)
-        best = { name: p.name, price, cost, size, weighted, per: Math.abs(cost - price) > 0.01 ? label(target) : "" };
+        best = { name: p.name, price, eff, cost, shelfCost: price / ratio, size, weighted,
+                 promo: applied ? { desc: applied.desc, club: !!applied.club } : null,
+                 per: Math.abs(ratio - 1) > 0.001 ? label(target) : "" };
     }
+    // הצעה מוצגת רק אם היא באמת זולה יותר (לפחות 3% ו-5 אגורות) ממה שנבחר
+    if (best) best.deal = deal && deal.cost < best.cost - Math.max(0.05, 0.03 * best.cost) ? deal : null;
     return best;
   }
 
@@ -193,7 +211,14 @@
         // אותו מוצר בשני ברקודים באותו סניף – שומרים את הזול (כמו גרסת המחשב שבוחרת את הזול מכל השורות)
         if (!prices.has(pid) || price < prices.get(pid)) prices.set(pid, price);
       }
-      return { ...s, prices };
+      const promos = new Map();
+      const pr = s.promos || [], pd = s.pd || [];
+      for (let i = 0; i + 4 < pr.length; i += 5) {
+        if (pr[i] < 0) continue;
+        let a = promos.get(pr[i]); if (!a) promos.set(pr[i], a = []);
+        a.push({ min: pr[i + 1], unit: pr[i + 2], club: pr[i + 3], desc: pd[pr[i + 4]] || "" });
+      }
+      return { ...s, prices, promos };
     });
     // אינדקס הפוך: לכל מוצר – באילו סניפים ובאיזה מחיר
     const where = new Map();
@@ -236,11 +261,11 @@
         const w = db.where.get(pid); if (!w) return;
         for (let k = 0; k < w.length; k += 2) {
           let a = perStore.get(w[k]); if (!a) perStore.set(w[k], a = []);
-          a.push([p, w[k + 1]]); flat.push([pid, w[k + 1]]);
+          a.push([p, w[k + 1], pid]); flat.push([pid, w[k + 1]]);
         }
       });
       if (spec.free && !spec.target) { spec = { ...spec, target: inferTarget(db.products, flat, spec) }; resolved[i] = [disp, spec, known]; }
-      for (const r of results) r.picks[disp] = bestFrom(perStore.get(r.si) || [], spec);
+      for (const r of results) r.picks[disp] = bestFrom(perStore.get(r.si) || [], spec, db.stores[r.si].promos, opt);
     }
 
     const cheapest = {};
@@ -273,12 +298,20 @@
     const r2 = x => Math.round(x * 100) / 100;
     const pickJson = (disp, p, known) => !p ? { item: disp, found: false, free_search: !known } : {
       item: disp, found: true, free_search: !known, product: p.name, size: p.size,
-      shelf_price: r2(p.price), cost: r2(p.cost), per: p.per && Math.abs(p.price - p.cost) > 0.01 ? p.per : "" };
+      shelf_price: r2(p.price), cost: r2(p.cost), per: p.per || "",
+      promo: p.promo ? { desc: p.promo.desc, club: p.promo.club, shelf_cost: r2(p.shelfCost), price: r2(p.eff) } : null,
+      deal: p.deal ? { product: p.deal.name, same: p.deal.name === p.name, size: p.deal.size, weighted: p.deal.weighted,
+                       min: p.deal.min, total: r2(p.deal.unit * p.deal.min), unit: r2(p.deal.unit), club: p.deal.club,
+                       desc: p.deal.desc, cost: r2(p.deal.cost), saving: r2(p.cost - p.deal.cost) } : null };
+    const picksOf = r => Object.values(r.picks).filter(Boolean);
     const chainName = c => (db.chain_names || {})[c] || c;
     const storeJson = r => ({
       chain: r.chain, chain_name: chainName(r.chain), store: r.title, address: r.address,
       distance_km: r.dist !== null ? Math.round(r.dist * 10) / 10 : null,
       total: r2(r.eff), basket_here: r2(total(r)), branches: branches[r.chain] || 1,
+      promo_saving: r2(picksOf(r).reduce((a, p) => a + (p.promo ? p.shelfCost - p.cost : 0), 0)),
+      deals: picksOf(r).filter(p => p.deal).length,
+      deal_saving: r2(picksOf(r).reduce((a, p) => a + (p.deal ? p.cost - p.deal.cost : 0), 0)),
       stale: db.stores[r.si].stale || null,
       found: resolved.filter(([d]) => r.picks[d]).map(([d]) => d),
       missing: resolved.filter(([d]) => !r.picks[d] && cheapest[d]).map(([d]) => d),
@@ -296,7 +329,8 @@
       items: resolved.map(([d]) => d),
       not_found_anywhere: resolved.filter(([d]) => !cheapest[d]).map(([d]) => d),
       stores_checked: results.length, last_update: db.last_update, approx_location: !(opt.lat && opt.lon),
-      sort, max_km: maxKm, unknown_distance_excluded: unknownDist,
+      sort, max_km: maxKm, unknown_distance_excluded: unknownDist, club: !!opt.club,
+      has_promos: db.stores.some(s => s.promos && s.promos.size > 0),
       cheapest_total: r2(Math.min(...perChain.map(r => r.eff))),
       ranking: perChain.map(storeJson),
       split: { total: splitTotal, saving: r2(Math.max(best.eff - splitTotal, 0)), items: split },

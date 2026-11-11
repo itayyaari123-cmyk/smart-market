@@ -150,6 +150,9 @@ CREATE TABLE IF NOT EXISTS items(
   chain TEXT, store_id INTEGER, code TEXT, name TEXT, nname TEXT, manufacturer TEXT,
   price REAL, qty TEXT, unit TEXT, weighted INTEGER, PRIMARY KEY(chain, store_id, code));
 CREATE INDEX IF NOT EXISTS ix_items_store ON items(chain, store_id);
+CREATE TABLE IF NOT EXISTS promos(
+  chain TEXT, store_id INTEGER, code TEXT, min_qty REAL, total REAL, club INTEGER, descr TEXT, ends TEXT);
+CREATE INDEX IF NOT EXISTS ix_promos_store ON promos(chain, store_id);
 CREATE TABLE IF NOT EXISTS geocache(q TEXT PRIMARY KEY, lat REAL, lon REAL);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 """
@@ -193,6 +196,144 @@ def _records(path: str, kind: str):
             yield m
         elif kind == "item" and "itemcode" in m and "itemprice" in m:
             yield m
+
+
+def _f(x, default=0.0):
+    try:
+        return float(str(x).replace(",", ".").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_promos(path, today: str | None = None):
+    """קורא קובץ מבצעים (PromoFull) ומחזיר שורה לכל מוצר במבצע:
+    {code, min_qty, total, club, desc, ends}  –  total = המחיר הכולל ל-min_qty יחידות ("2 ב-18" -> min_qty=2, total=18).
+    תומך בשני הפורמטים שהרשתות מפרסמות (חדש: Groups/PromotionItem, ישן: שדות ברמת המבצע + Items).
+    מדלג על: קופונים, מבצעים שפג תוקפם/טרם התחילו, מבצעים עם תנאי סכום קנייה מינימלי, מבצעים מרובי-קבוצות
+    (קנה X קבל Y), ומוצרי מתנה."""
+    from lxml import etree
+
+    today = today or dt.date.today().isoformat()
+    try:
+        root = etree.parse(path, etree.XMLParser(recover=True, huge_tree=True)).getroot()
+    except Exception as e:  # noqa
+        log.warning("cannot parse %s: %s", path, e)
+        return
+    if root is None:
+        return
+    low = lambda el: el.tag.split("}")[-1].lower() if isinstance(el.tag, str) else ""
+    for p in root.iter():
+        if low(p) not in ("promotion", "sale"):
+            continue
+        head, groups, pitems, olditems, clubs, coupon = {}, 0, [], [], [], False
+        for el in p.iter():
+            t = low(el)
+            if el is p or not t:
+                continue
+            if len(el) == 0 and el.getparent() is p:
+                head[t] = (el.text or "").strip()
+            if t == "group":
+                groups += 1
+            elif t == "promotionitem":
+                pitems.append({low(c): (c.text or "").strip() for c in el})
+            elif t == "item":
+                olditems.append({low(c): (c.text or "").strip() for c in el})
+            elif t == "clubid":
+                clubs.append((el.text or "").strip())
+            elif t == "additionaliscoupon" and (el.text or "").strip() == "1":
+                coupon = True
+            elif t in ("minpurchaseamount", "minpurchaseamnt") and _f(el.text) > 0:
+                coupon = True  # מותנה בסכום קנייה – לא מבצע על המוצר עצמו
+            elif t == "additionalistotal" and (el.text or "").strip() == "1":
+                coupon = True
+        if coupon or groups > 1:
+            continue
+        start = (head.get("promotionstartdatetime") or head.get("promotionstartdate") or "")[:10]
+        end = (head.get("promotionenddatetime") or head.get("promotionenddate") or "")[:10]
+        if (start and start > today) or (end and end < today):
+            continue
+        club = 0 if clubs and all(c == "0" or c.startswith("0 ") or c.startswith("0-") for c in clubs) else 1
+        desc = head.get("promotiondescription", "")
+        if "קופון" in desc:
+            continue
+        if pitems:  # פורמט חדש: לכל מוצר שדות משלו
+            rows = [(i.get("itemcode"), _f(i.get("minqty"), 1) or 1, _f(i.get("discountedprice"))) for i in pitems]
+        else:       # פורמט ישן: השדות ברמת המבצע
+            mq, tot = _f(head.get("minqty"), 1) or 1, _f(head.get("discountedprice"))
+            rows = [(i.get("itemcode"), mq, tot) for i in olditems if i.get("isgiftitem", "0") in ("0", "")]
+            if "itemcode" in head:
+                rows.append((head["itemcode"], mq, tot))
+        for code, mq, tot in rows:
+            if 0 < mq < 1:
+                mq = 1.0  # מוצר שקיל: "0.01" פירושו "מכל כמות", והמחיר הוא לק"ג
+            if code and tot > 0 and mq > 0:
+                yield {"code": code, "min_qty": mq, "total": tot, "club": club, "desc": desc, "ends": end}
+
+
+def save_store_promos(con, chain_key, sid, promo_rows):
+    """שומר לכל מוצר את המבצע הטוב ביותר מכל סוג (לכולם/מועדון × יחידה אחת/כמות). מבצע שהמחיר שלו לא הגיוני
+    ביחס למחיר המדף (פחות מ-20% או לא זול יותר) נזרק – כנראה נתון שגוי או שדה שפורש אחרת."""
+    shelf = dict(con.execute("SELECT code,price FROM items WHERE chain=? AND store_id=?", (chain_key, sid)))
+    best = {}
+    for r in promo_rows:
+        price = shelf.get(r["code"])
+        if not price:
+            continue
+        unit = r["total"] / r["min_qty"]
+        if not (0.2 * price <= unit <= 0.99 * price):
+            continue
+        k = (r["code"], r["club"], r["min_qty"] > 1.001)
+        if k not in best or unit < best[k]["total"] / best[k]["min_qty"]:
+            best[k] = r
+    con.execute("DELETE FROM promos WHERE chain=? AND store_id=?", (chain_key, sid))
+    con.executemany("INSERT INTO promos VALUES(?,?,?,?,?,?,?,?)",
+                    [(chain_key, sid, r["code"], r["min_qty"], r["total"], r["club"], r["desc"], r["ends"])
+                     for r in best.values()])
+    con.commit()
+    return len(best)
+
+
+def export_store(con, chain, sid, products, index):
+    """מייצא סניף לפורמט של האתר: items = [pid, price, ...], promos = [pid, min_qty, unit_price, club, desc_idx, ...]."""
+    flat, code_pid = [], {}
+    for code, iname, price, qty, unit, w in con.execute(
+            "SELECT code,name,price,qty,unit,weighted FROM items WHERE chain=? AND store_id=? ORDER BY rowid", (chain, sid)):
+        qd = quantity_of(iname, qty, unit, bool(w))
+        key = (iname, qd, int(w))
+        pid = index.get(key)
+        if pid is None:
+            pid = index[key] = len(products)
+            products.append([iname, round(qd[0], 2) if qd else 0, qd[1] if qd else "", int(w)])
+        flat += [pid, round(price, 2)]
+        code_pid[code] = pid
+    pflat, descs, didx = [], [], {}
+    for code, mq, tot, club, d, ends in con.execute(
+            "SELECT code,min_qty,total,club,descr,ends FROM promos WHERE chain=? AND store_id=?", (chain, sid)):
+        if code not in code_pid:
+            continue
+        if d not in didx:
+            didx[d] = len(descs)
+            descs.append(d)
+        pflat += [code_pid[code], round(mq, 2), round(tot / mq, 3), int(club), didx[d]]
+    return flat, pflat, descs
+
+
+def remap_store(s: dict, prods: list, products: list, index: dict) -> dict:
+    """מעביר סניף מקובץ נתונים אחר (גיבוי/אתמול) לטבלת המוצרים הנוכחית."""
+    flat, it, m = [], s["items"], {}
+    for i in range(0, len(it), 2):
+        pname, amount, dim, w = prods[it[i]]
+        key = (pname, (amount, dim) if dim else None, int(w))
+        pid = index.get(key)
+        if pid is None:
+            pid = index[key] = len(products)
+            products.append([pname, amount, dim, int(w)])
+        m[it[i]] = pid
+        flat += [pid, it[i + 1]]
+    pr = list(s.get("promos") or [])
+    for i in range(0, len(pr), 5):
+        pr[i] = m.get(pr[i], -1)
+    return {**s, "items": flat, "promos": pr}
 
 
 def parse_stores(path):
@@ -423,7 +564,15 @@ def update_chain(chain_key: str, cfg: dict, con: sqlite3.Connection, report=prin
             continue
         save_store_prices(con, chain_key, st, rows, now)
         done += 1
-        report(f"  {chain_key} סניף {sid} ({st['name']}, {st['city_id']}): {len(rows):,} מוצרים")
+        n_promos = None
+        if cfg.get("promos", True):
+            try:
+                pr = _download(chain_key, base / f"promos_{sid}", "PROMO_FULL_FILE", store_id=sid)
+                n_promos = save_store_promos(con, chain_key, sid, (r for f in pr for r in parse_promos(f)))
+            except Exception as e:  # noqa
+                report(f"  {chain_key} סניף {sid}: מבצעים לא ירדו ({type(e).__name__})")
+        report(f"  {chain_key} סניף {sid} ({st['name']}, {st['city_id']}): {len(rows):,} מוצרים"
+               + (f", {n_promos:,} מבצעים" if n_promos is not None else ""))
     return done
 
 
