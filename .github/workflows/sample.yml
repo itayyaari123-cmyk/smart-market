@@ -1,0 +1,14 @@
+name: promo sample
+on:
+  push:
+    branches: [promo-sample]
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -q -r app/requirements.txt
+      - run: python tools/sample_promos.py
